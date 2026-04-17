@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lung Inflammation Monitor — Live Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:       #0b0e1a;
+    --panel:    #111827;
+    --card:     #1a2235;
+    --border:   #1f2d45;
+    --accent:   #38bdf8;
+    --accent2:  #818cf8;
+    --red:      #f43f5e;
+    --orange:   #fb923c;
+    --green:    #34d399;
+    --yellow:   #fbbf24;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --mono:     'Space Mono', monospace;
+    --sans:     'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
+
+  /* ── scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--panel); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── layout ── */
+  .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  
+  /* ── sidebar ── */
+  .sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    display: flex; flex-direction: column; gap: 24px;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .logo-text { font-family: var(--mono); font-size: 13px; line-height: 1.3; }
+  .logo-text strong { color: var(--accent); }
+
+  .patient-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+  .patient-card h3 {
+    font-family: var(--mono); font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;
+  }
+  .patient-avatar {
+    width: 54px; height: 54px; border-radius: 50%;
+    background: linear-gradient(135deg, #1e3a5f, #0f2744);
+    border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 18px; color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .patient-name { font-size: 15px; font-weight: 600; }
+  .patient-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .patient-fields { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .patient-field { display: flex; justify-content: space-between; font-size: 12px; }
+  .patient-field span:first-child { color: var(--muted); }
+  .patient-field span:last-child { font-weight: 500; font-family: var(--mono); font-size: 11px; }
+
+  .sidebar-input { display: flex; flex-direction: column; gap: 6px; }
+  .sidebar-input label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .sidebar-input input {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px;
+    color: var(--text); font-size: 13px; font-family: var(--sans);
+    outline: none; width: 100%;
+    transition: border-color 0.2s;
+  }
+  .sidebar-input input:focus { border-color: var(--accent); }
+
+  /* ── main ── */
+  .main { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+  
+  /* ── header ── */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+  }
+  .header h1 { font-family: var(--mono); font-size: 20px; }
+  .header h1 span { color: var(--accent); }
+  .live-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 20px; padding: 6px 16px; font-size: 12px;
+    font-family: var(--mono);
+  }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.7); }
+  }
+  .live-dot.offline { background: var(--muted); animation: none; }
+
+  /* ── config banner ── */
+  .config-banner {
+    background: #1a1a00; border: 1px solid #4a4a00;
+    border-radius: 10px; padding: 12px 16px;
+    font-size: 13px; display: flex; align-items: center; gap: 12px;
+  }
+  .config-banner input {
+    flex: 1; background: var(--card); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px;
+    color: var(--text); font-family: var(--mono); font-size: 12px; outline: none;
+  }
+  .config-banner button {
+    background: var(--accent); color: #000; font-weight: 600;
+    border: none; border-radius: 6px; padding: 7px 16px;
+    cursor: pointer; font-size: 13px; white-space: nowrap;
+  }
+
+  /* ── metric cards ── */
+  .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .metric-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; position: relative; overflow: hidden;
+    transition: border-color 0.3s, transform 0.2s;
+    cursor: default;
+  }
+  .metric-card:hover { transform: translateY(-2px); }
+  .metric-card .mc-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .metric-card .mc-value { font-family: var(--mono); font-size: 28px; font-weight: 700; line-height: 1; }
+  .metric-card .mc-unit  { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .metric-card .mc-status { font-size: 11px; margin-top: 8px; font-weight: 600; }
+  .metric-card .mc-bar { height: 3px; border-radius: 2px; margin-top: 10px; background: var(--border); overflow: hidden; }
+  .metric-card .mc-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s, background 0.3s; }
+  .mc-good   { color: var(--green); border-color: rgba(52,211,153,0.25) !important; }
+  .mc-warn   { color: var(--orange); border-color: rgba(251,146,60,0.25) !important; }
+  .mc-danger { color: var(--red); border-color: rgba(244,63,94,0.25) !important; }
+
+  /* ── analysis bar ── */
+  .analysis-bar {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 20px;
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+  }
+  .analysis-bar h3 { font-family: var(--mono); font-size: 11px; color: var(--accent); white-space: nowrap; }
+  .stat-chips { display: flex; gap: 12px; flex-wrap: wrap; flex: 1; }
+  .stat-chip { font-size: 12px; font-family: var(--mono); }
+  .stat-chip span { color: var(--muted); }
+
+  /* ── charts area ── */
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .chart-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+  .chart-card h3 { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-bottom: 12px; }
+  .chart-main { grid-column: span 2; }
+
+  /* ── filter bar ── */
+  .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .filter-btn {
+    font-size: 11px; padding: 4px 12px; border-radius: 20px; cursor: pointer;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--muted); font-family: var(--mono); transition: all 0.2s;
+  }
+  .filter-btn.active { color: #000; border-color: transparent; font-weight: 700; }
+
+  /* ── alert panel ── */
+  .alert-panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; max-height: 200px; overflow-y: auto;
+  }
+  .alert-panel h3 { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-bottom: 10px; }
+  .alert-item { font-size: 12px; padding: 6px 10px; border-radius: 6px; margin-bottom: 6px; }
+  .alert-danger { background: rgba(244,63,94,0.15); color: var(--red); border-left: 3px solid var(--red); }
+  .alert-warn   { background: rgba(251,146,60,0.15); color: var(--orange); border-left: 3px solid var(--orange); }
+  .alert-ok     { background: rgba(52,211,153,0.1); color: var(--green); border-left: 3px solid var(--green); }
+  .no-alert     { color: var(--muted); font-size: 12px; }
+
+  /* ── footer ── */
+  .footer { font-size: 11px; color: var(--muted); font-family: var(--mono); text-align: right; padding-top: 8px; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .charts-grid { grid-template-columns: 1fr; }
+    .chart-main { grid-column: span 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ═══════════ SIDEBAR ═══════════ -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">🫁</div>
+      <div class="logo-text"><strong>LungMon</strong><br>Air Quality v2</div>
+    </div>
+
+    <!-- Patient display -->
+    <div class="patient-card">
+      <h3>Patient Info</h3>
+      <div class="patient-avatar" id="pat-avatar">--</div>
+      <div class="patient-name" id="pat-name-disp">—</div>
+      <div class="patient-meta" id="pat-meta-disp">—</div>
+      <div class="patient-fields">
+        <div class="patient-field"><span>Room</span><span id="pat-room-disp">—</span></div>
+        <div class="patient-field"><span>Doctor</span><span id="pat-doc-disp">—</span></div>
+        <div class="patient-field"><span>Samples</span><span id="pat-samples">0</span></div>
+        <div class="patient-field"><span>Session</span><span id="pat-session">0 min</span></div>
+      </div>
+    </div>
+
+    <!-- Patient inputs -->
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="sidebar-input"><label>Patient Name</label><input id="in-name" placeholder="Full name" oninput="updatePatient()"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="sidebar-input"><label>Age</label><input id="in-age" placeholder="—" type="number" oninput="updatePatient()"></div>
+        <div class="sidebar-input"><label>Gender</label><input id="in-gender" placeholder="—" oninput="updatePatient()"></div>
+      </div>
+      <div class="sidebar-input"><label>Room / Ward</label><input id="in-room" placeholder="—" oninput="updatePatient()"></div>
+      <div class="sidebar-input"><label>Doctor</label><input id="in-doctor" placeholder="—" oninput="updatePatient()"></div>
+    </div>
+
+    <div style="margin-top:auto;font-size:11px;color:var(--muted);font-family:var(--mono);line-height:1.6;">
+      ↗ Open this file locally<br>or host it for free on<br>GitHub Pages / Netlify
+    </div>
+  </aside>
+
+  <!-- ═══════════ MAIN ═══════════ -->
+  <main class="main">
+
+    <!-- Header -->
+    <div class="header">
+      <h1>Lung <span>Inflammation</span> Monitor</h1>
+      <div class="live-badge">
+        <div class="live-dot offline" id="live-dot"></div>
+        <span id="live-label">Connecting…</span>
+      </div>
+    </div>
+
+    <!-- Channel config banner -->
+    <div class="config-banner">
+      <span style="color:#facc15;font-size:16px;">⚙</span>
+      <span style="color:#a1a1aa;font-size:12px;">ThingSpeak Channel ID:</span>
+      <input id="channel-id-input" placeholder="e.g. 2345678" value="">
+      <button onclick="connectChannel()">Connect Live</button>
+      <span id="channel-status" style="font-size:12px;color:var(--muted);">Not connected</span>
+    </div>
+
+    <!-- Metric cards -->
+    <div class="metrics">
+      <div class="metric-card" id="mc-nh3">
+        <div class="mc-label">NH₃</div>
+        <div class="mc-value" id="v-nh3">—</div>
+        <div class="mc-unit">ppm</div>
+        <div class="mc-status" id="s-nh3">—</div>
+        <div class="mc-bar"><div class="mc-bar-fill" id="b-nh3" style="width:0%;background:var(--green)"></div></div>
+      </div>
+      <div class="metric-card" id="mc-co">
+        <div class="mc-label">CO</div>
+        <div class="mc-value" id="v-co">—</div>
+        <div class="mc-unit">ppm</div>
+        <div class="mc-status" id="s-co">—</div>
+        <div class="mc-bar"><div class="mc-bar-fill" id="b-co" style="width:0%;background:var(--green)"></div></div>
+      </div>
+      <div class="metric-card" id="mc-voc">
+        <div class="mc-label">VOC Index</div>
+        <div class="mc-value" id="v-voc">—</div>
+        <div class="mc-unit">index</div>
+        <div class="mc-status" id="s-voc">—</div>
+        <div class="mc-bar"><div class="mc-bar-fill" id="b-voc" style="width:0%;background:var(--green)"></div></div>
+      </div>
+      <div class="metric-card" id="mc-lir">
+        <div class="mc-label">Lung Inflammation</div>
+        <div class="mc-value" id="v-lir">—</div>
+        <div class="mc-unit">%</div>
+        <div class="mc-status" id="s-lir">—</div>
+        <div class="mc-bar"><div class="mc-bar-fill" id="b-lir" style="width:0%;background:var(--green)"></div></div>
+      </div>
+      <div class="metric-card" id="mc-hlth">
+        <div class="mc-label">Lung Health</div>
+        <div class="mc-value" id="v-hlth">—</div>
+        <div class="mc-unit">%</div>
+        <div class="mc-status" id="s-hlth">—</div>
+        <div class="mc-bar"><div class="mc-bar-fill" id="b-hlth" style="width:100%;background:var(--green)"></div></div>
+      </div>
+    </div>
+
+    <!-- Analysis bar -->
+    <div class="analysis-bar">
+      <h3>SESSION ANALYSIS</h3>
+      <div class="stat-chips">
+        <div class="stat-chip"><span>Max NH₃</span><br><b id="an-nh3-max">—</b></div>
+        <div class="stat-chip"><span>Max CO</span><br><b id="an-co-max">—</b></div>
+        <div class="stat-chip"><span>Max VOC</span><br><b id="an-voc-max">—</b></div>
+        <div class="stat-chip"><span>Max Inflam.</span><br><b id="an-lir-max">—</b></div>
+        <div class="stat-chip"><span>Min Health</span><br><b id="an-hlth-min">—</b></div>
+        <div class="stat-chip"><span>Avg Inflam.</span><br><b id="an-lir-avg">—</b></div>
+        <div class="stat-chip"><span>Last updated</span><br><b id="an-time">—</b></div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+
+      <!-- Main trend chart -->
+      <div class="chart-card chart-main">
+        <h3>REALTIME TREND</h3>
+        <div class="filter-bar">
+          <button class="filter-btn active" onclick="toggleSeries('nh3',this)" style="background:#38bdf8;color:#000;">NH₃</button>
+          <button class="filter-btn active" onclick="toggleSeries('co',this)" style="background:#fb923c;color:#000;">CO</button>
+          <button class="filter-btn active" onclick="toggleSeries('voc',this)" style="background:#818cf8;color:#000;">VOC</button>
+          <button class="filter-btn active" onclick="toggleSeries('lir',this)" style="background:#f43f5e;color:#000;">Lung Inflam.</button>
+          <button class="filter-btn" onclick="toggleSeries('health',this)">Lung Health</button>
+          <button class="filter-btn" onclick="clearData()" style="margin-left:auto;border-color:#f43f5e;color:#f43f5e;">✕ Clear</button>
+        </div>
+        <div style="position:relative;height:250px;">
+          <canvas id="trendChart" role="img" aria-label="Realtime sensor trend chart showing NH3, CO, VOC, and lung inflammation over time">No data yet.</canvas>
+        </div>
+      </div>
+
+      <!-- Gauge-style bar chart -->
+      <div class="chart-card">
+        <h3>CURRENT LEVELS VS THRESHOLD</h3>
+        <div style="position:relative;height:220px;">
+          <canvas id="barChart" role="img" aria-label="Bar chart comparing current sensor levels to safe thresholds">No data yet.</canvas>
+        </div>
+      </div>
+
+      <!-- Alert log -->
+      <div class="alert-panel">
+        <h3>ALERT LOG</h3>
+        <div id="alert-log"><span class="no-alert">Waiting for data…</span></div>
+      </div>
+
+    </div>
+
+    <div class="footer">LungMon v2 — Open-source medical air quality dashboard — Data via ThingSpeak</div>
+  </main>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  CONFIG & STATE
+// ═══════════════════════════════════════════════
+const THRESHOLDS = {
+  nh3:    { warn: 25,  danger: 50,  max: 100,  label: 'NH₃' },
+  co:     { warn: 50,  danger: 100, max: 200,  label: 'CO' },
+  voc:    { warn: 100, danger: 150, max: 300,  label: 'VOC' },
+  lir:    { warn: 40,  danger: 70,  max: 100,  label: 'Inflam.' },
+  health: { warn: 60,  danger: 40,  max: 100,  label: 'Health', inverted: true }
+};
+
+const MAX_POINTS  = 80;
+const POLL_INTERVAL_MS = 16000; // ThingSpeak free: 15s minimum
+
+let channelId     = '';
+let pollTimer     = null;
+let sessionStart  = null;
+let sampleCount   = 0;
+let alertLog      = [];
+
+const seriesData = {
+  labels: [],
+  nh3:    [], co: [], voc: [], lir: [], health: []
+};
+
+const activeFilters = { nh3: true, co: true, voc: true, lir: true, health: false };
+
+// ═══════════════════════════════════════════════
+//  PATIENT
+// ═══════════════════════════════════════════════
+function updatePatient() {
+  const name   = document.getElementById('in-name').value.trim()   || '—';
+  const age    = document.getElementById('in-age').value.trim()    || '—';
+  const gender = document.getElementById('in-gender').value.trim() || '—';
+  const room   = document.getElementById('in-room').value.trim()   || '—';
+  const doctor = document.getElementById('in-doctor').value.trim() || '—';
+
+  document.getElementById('pat-name-disp').textContent = name;
+  document.getElementById('pat-meta-disp').textContent = `Age: ${age} · ${gender}`;
+  document.getElementById('pat-room-disp').textContent = room;
+  document.getElementById('pat-doc-disp').textContent  = doctor;
+
+  const initials = name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase() || '??';
+  document.getElementById('pat-avatar').textContent = initials;
+}
+
+// ═══════════════════════════════════════════════
+//  CHANNEL CONNECT
+// ═══════════════════════════════════════════════
+function connectChannel() {
+  const val = document.getElementById('channel-id-input').value.trim();
+  if (!val) { alert('Please enter your ThingSpeak Channel ID.'); return; }
+  channelId = val;
+  if (pollTimer) clearInterval(pollTimer);
+  document.getElementById('channel-status').textContent = 'Connecting…';
+  fetchLatest();
+  pollTimer = setInterval(fetchLatest, POLL_INTERVAL_MS);
+}
+
+async function fetchLatest() {
+  if (!channelId) return;
+  try {
+    const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?results=80&timezone=Asia/Kolkata`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    const feeds = data.feeds || [];
+    if (!feeds.length) {
+      document.getElementById('channel-status').textContent = 'No data yet';
+      return;
+    }
+
+    // Rebuild buffer from all fetched feeds
+    seriesData.labels  = [];
+    seriesData.nh3     = [];
+    seriesData.co      = [];
+    seriesData.voc     = [];
+    seriesData.lir     = [];
+    seriesData.health  = [];
+
+    feeds.forEach((f, i) => {
+      seriesData.labels.push(i + 1);
+      seriesData.nh3.push(   parseFloat(f.field1) || 0);
+      seriesData.co.push(    parseFloat(f.field2) || 0);
+      seriesData.voc.push(   parseFloat(f.field3) || 0);
+      seriesData.lir.push(   parseFloat(f.field4) || 0);
+      seriesData.health.push(parseFloat(f.field5) || 0);
+    });
+
+    const latest = feeds[feeds.length - 1];
+    const v = {
+      nh3:    parseFloat(latest.field1) || 0,
+      co:     parseFloat(latest.field2) || 0,
+      voc:    parseFloat(latest.field3) || 0,
+      lir:    parseFloat(latest.field4) || 0,
+      health: parseFloat(latest.field5) || 0,
+    };
+
+    sampleCount = feeds.length;
+    if (!sessionStart) sessionStart = Date.now();
+
+    updateMetricCards(v);
+    updateAnalysis(v);
+    updateCharts();
+    checkAlerts(v);
+    setLive(true);
+
+    document.getElementById('channel-status').textContent = `✓ Channel ${channelId}`;
+  } catch(e) {
+    console.error(e);
+    setLive(false);
+    document.getElementById('channel-status').textContent = 'Error — check Channel ID';
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  METRIC CARDS
+// ═══════════════════════════════════════════════
+function getStatus(key, val) {
+  const t = THRESHOLDS[key];
+  if (t.inverted) {
+    if (val >= t.warn)   return 'good';
+    if (val >= t.danger) return 'warn';
+    return 'danger';
+  } else {
+    if (val < t.warn)    return 'good';
+    if (val < t.danger)  return 'warn';
+    return 'danger';
+  }
+}
+const statusLabels = {
+  nh3:    { good:'Safe',    warn:'Elevated',  danger:'Dangerous' },
+  co:     { good:'Safe',    warn:'Elevated',  danger:'Dangerous' },
+  voc:    { good:'Low',     warn:'Moderate',  danger:'High' },
+  lir:    { good:'Low',     warn:'Moderate',  danger:'High / Unsafe' },
+  health: { good:'Healthy', warn:'Declining', danger:'Critical' }
+};
+const statusColors = { good: '#34d399', warn: '#fb923c', danger: '#f43f5e' };
+
+function updateMetricCards(v) {
+  const ids = { nh3:'nh3', co:'co', voc:'voc', lir:'lir', health:'hlth' };
+  const keys = ['nh3','co','voc','lir','health'];
+  keys.forEach(k => {
+    const id   = ids[k];
+    const stat = getStatus(k, v[k]);
+    const clr  = statusColors[stat];
+    const t    = THRESHOLDS[k];
+    const pct  = Math.min(100, (v[k] / t.max) * 100);
+
+    document.getElementById(`v-${id}`).textContent = v[k].toFixed(1);
+    document.getElementById(`s-${id}`).textContent = statusLabels[k][stat];
+    document.getElementById(`s-${id}`).style.color = clr;
+    document.getElementById(`b-${id}`).style.width = pct + '%';
+    document.getElementById(`b-${id}`).style.background = clr;
+
+    const card = document.getElementById(`mc-${id}`);
+    card.className = 'metric-card mc-' + (stat === 'good' ? 'good' : stat === 'warn' ? 'warn' : 'danger');
+    document.getElementById(`v-${id}`).style.color = clr;
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  ANALYSIS
+// ═══════════════════════════════════════════════
+function updateAnalysis(v) {
+  const safe = (arr) => arr.length ? arr : [0];
+  document.getElementById('an-nh3-max').textContent  = Math.max(...safe(seriesData.nh3)).toFixed(1) + ' ppm';
+  document.getElementById('an-co-max').textContent   = Math.max(...safe(seriesData.co)).toFixed(1)  + ' ppm';
+  document.getElementById('an-voc-max').textContent  = Math.max(...safe(seriesData.voc)).toFixed(1);
+  document.getElementById('an-lir-max').textContent  = Math.max(...safe(seriesData.lir)).toFixed(1) + '%';
+  document.getElementById('an-hlth-min').textContent = Math.min(...safe(seriesData.health)).toFixed(1) + '%';
+  const avg = seriesData.lir.length
+    ? (seriesData.lir.reduce((a,b)=>a+b,0)/seriesData.lir.length).toFixed(1)+'%'
+    : '—';
+  document.getElementById('an-lir-avg').textContent = avg;
+  document.getElementById('an-time').textContent = new Date().toLocaleTimeString('en-IN');
+  document.getElementById('pat-samples').textContent = sampleCount;
+  if (sessionStart) {
+    const mins = Math.round((Date.now()-sessionStart)/60000);
+    document.getElementById('pat-session').textContent = mins + ' min';
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  CHARTS
+// ═══════════════════════════════════════════════
+const SERIES_COLORS = {
+  nh3:    '#38bdf8',
+  co:     '#fb923c',
+  voc:    '#818cf8',
+  lir:    '#f43f5e',
+  health: '#34d399'
+};
+
+let trendChart = null;
+let barChart   = null;
+
+function buildTrendChart() {
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  trendChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false },
+        tooltip: {
+          backgroundColor: '#111827', borderColor: '#1f2d45', borderWidth: 1,
+          titleColor: '#e2e8f0', bodyColor: '#94a3b8', padding: 10
+        }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', maxTicksLimit: 10 } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+function buildBarChart() {
+  const ctx = document.getElementById('barChart').getContext('2d');
+  barChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['NH₃', 'CO', 'VOC', 'Inflam.', 'Health'],
+      datasets: [
+        { label: 'Current',   data: [0,0,0,0,0], backgroundColor: ['#38bdf8','#fb923c','#818cf8','#f43f5e','#34d399'] },
+        { label: 'Warn Level',   data: [25,50,100,40,60],  backgroundColor: 'rgba(251,146,60,0.2)',  borderColor: '#fb923c', borderWidth: 1, type: 'line', fill: false, pointRadius: 4 },
+        { label: 'Danger Level', data: [50,100,150,70,40], backgroundColor: 'rgba(244,63,94,0.15)',  borderColor: '#f43f5e', borderWidth: 1, type: 'line', fill: false, pointRadius: 4, borderDash: [4,4] },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: { legend: { display: false },
+        tooltip: { backgroundColor: '#111827', borderColor: '#1f2d45', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#94a3b8' }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+function updateCharts() {
+  if (!trendChart) buildTrendChart();
+  if (!barChart)   buildBarChart();
+
+  const labels = seriesData.labels;
+  const datasets = [];
+  const keys = ['nh3','co','voc','lir','health'];
+  const names = { nh3:'NH₃',co:'CO',voc:'VOC',lir:'Lung Inflam.',health:'Lung Health' };
+  keys.forEach(k => {
+    if (!activeFilters[k]) return;
+    datasets.push({
+      label: names[k],
+      data: seriesData[k],
+      borderColor: SERIES_COLORS[k],
+      backgroundColor: SERIES_COLORS[k] + '18',
+      borderWidth: 1.8,
+      pointRadius: 0,
+      fill: false,
+      tension: 0.3
+    });
+  });
+
+  trendChart.data.labels   = labels;
+  trendChart.data.datasets = datasets;
+  trendChart.update('none');
+
+  const last = (arr) => arr.length ? arr[arr.length-1] : 0;
+  barChart.data.datasets[0].data = [
+    last(seriesData.nh3), last(seriesData.co), last(seriesData.voc),
+    last(seriesData.lir), last(seriesData.health)
+  ];
+  barChart.update();
+}
+
+// ═══════════════════════════════════════════════
+//  FILTER BUTTONS
+// ═══════════════════════════════════════════════
+function toggleSeries(key, btn) {
+  activeFilters[key] = !activeFilters[key];
+  if (activeFilters[key]) {
+    btn.classList.add('active');
+    btn.style.background = SERIES_COLORS[key];
+    btn.style.color = '#000';
+    btn.style.borderColor = 'transparent';
+  } else {
+    btn.classList.remove('active');
+    btn.style.background = 'transparent';
+    btn.style.color = '#64748b';
+    btn.style.borderColor = '#1f2d45';
+  }
+  updateCharts();
+}
+
+function clearData() {
+  Object.keys(seriesData).forEach(k => { if(Array.isArray(seriesData[k])) seriesData[k]=[] });
+  sampleCount = 0;
+  sessionStart = null;
+  updateCharts();
+}
+
+// ═══════════════════════════════════════════════
+//  ALERTS
+// ═══════════════════════════════════════════════
+function checkAlerts(v) {
+  const el = document.getElementById('alert-log');
+  const now = new Date().toLocaleTimeString('en-IN');
+  let newAlerts = [];
+
+  const checks = [
+    { k:'nh3',    val:v.nh3,    warn:25,  danger:50,  label:'NH₃' },
+    { k:'co',     val:v.co,     warn:50,  danger:100, label:'CO' },
+    { k:'voc',    val:v.voc,    warn:100, danger:150, label:'VOC' },
+    { k:'lir',    val:v.lir,    warn:40,  danger:70,  label:'Lung Inflammation' },
+  ];
+
+  checks.forEach(c => {
+    if (c.val >= c.danger) newAlerts.push({ cls:'alert-danger', msg:`🔴 ${now} — ${c.label}: ${c.val.toFixed(1)} — DANGER level exceeded!` });
+    else if (c.val >= c.warn) newAlerts.push({ cls:'alert-warn', msg:`🟡 ${now} — ${c.label}: ${c.val.toFixed(1)} — Warning threshold reached.` });
+  });
+
+  if (v.health < 40) newAlerts.push({ cls:'alert-danger', msg:`🔴 ${now} — Lung Health: ${v.health.toFixed(1)}% — CRITICAL` });
+  else if (v.health < 60) newAlerts.push({ cls:'alert-warn', msg:`🟡 ${now} — Lung Health: ${v.health.toFixed(1)}% — Declining` });
+
+  if (!newAlerts.length) newAlerts.push({ cls:'alert-ok', msg:`✓ ${now} — All values within safe range.` });
+
+  alertLog = [...newAlerts, ...alertLog].slice(0, 30);
+
+  el.innerHTML = alertLog.map(a => `<div class="alert-item ${a.cls}">${a.msg}</div>`).join('');
+}
+
+// ═══════════════════════════════════════════════
+//  LIVE STATUS
+// ═══════════════════════════════════════════════
+function setLive(isLive) {
+  const dot = document.getElementById('live-dot');
+  const lbl = document.getElementById('live-label');
+  if (isLive) {
+    dot.className = 'live-dot';
+    lbl.textContent = 'Live';
+  } else {
+    dot.className = 'live-dot offline';
+    lbl.textContent = 'Offline';
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+buildTrendChart();
+buildBarChart();
+updatePatient();
+
+// Pre-fill channel ID if it's in the URL hash: lung_dashboard.html#2345678
+if (location.hash) {
+  const id = location.hash.replace('#','');
+  document.getElementById('channel-id-input').value = id;
+  channelId = id;
+  connectChannel();
+}
+</script>
+</body>
+</html>
